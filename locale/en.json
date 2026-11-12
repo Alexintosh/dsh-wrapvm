@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Wrapvm desktop",
+    "description": "Run VM tools in a separate container and open its desktop. Other Harness tools keep their existing access."
+  },
+  "detail": {
+    "isolatedVM": {
+      "title": "Wrapvm desktop",
+      "description": "Run VM tools in a separate container and open its desktop. Other Harness tools keep their existing access."
+    }
+  }
+}

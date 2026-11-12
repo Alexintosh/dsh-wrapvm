@@ -1,0 +1,6 @@
+# Optional managed Wrapvm environment service.
+- insert:
+    - id: wrapvm-isolate
+      name: '@deepseek-ai/dsh-wrapvm-isolate'
+      config:
+        backend: docker

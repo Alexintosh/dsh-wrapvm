@@ -1,0 +1,10 @@
+node_modules/
+.DS_Store
+.env
+.env.*
+!.env.example
+*.log
+*.tsbuildinfo
+coverage/
+.release-pack-*/
+# Published artifacts are deliberately tracked in lib/ and dist/.

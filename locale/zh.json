@@ -1,0 +1,12 @@
+{
+  "meta": {
+    "title": "Wrapvm 桌面",
+    "description": "在独立容器中运行虚拟机工具并查看桌面。其他 Harness 工具仍保留原有访问权限"
+  },
+  "detail": {
+    "isolatedVM": {
+      "title": "Wrapvm 桌面",
+      "description": "在独立容器中运行虚拟机工具并查看桌面。其他 Harness 工具仍保留原有访问权限"
+    }
+  }
+}
