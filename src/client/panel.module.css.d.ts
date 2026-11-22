@@ -12,6 +12,7 @@ declare const styles: {
   readonly empty: string;
   readonly emptyIcon: string;
   readonly error: string;
+  readonly externalLink: string;
   readonly facts: string;
   readonly field: string;
   readonly form: string;

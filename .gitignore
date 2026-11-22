@@ -8,3 +8,9 @@ node_modules/
 coverage/
 .release-pack-*/
 # Published artifacts are deliberately tracked in lib/ and dist/.
+
+.dev/
+
+# Intermediate emit files; release runtime and public declarations remain tracked.
+lib/types/**/*.js
+lib/**/*.map

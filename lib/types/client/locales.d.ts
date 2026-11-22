@@ -18,9 +18,12 @@ export declare const en: {
     readonly save: "Save changes";
     readonly limitsDescription: "Set the CPU and memory available to this environment.";
     readonly removeDescription: "The container will be removed. Keep its workspace volume to preserve the files inside it.";
-    readonly noEnvironments: "Create an environment in VM environments first.";
+    readonly noEnvironments: "Ask the agent to prepare a VM, or create one in VM environments.";
     readonly selectDescription: "Choose where this conversation’s VM tools run.";
-    readonly desktopDescription: "Open the browser and desktop without leaving your conversation.";
+    readonly desktopDescription: "Open the desktop here or in your host browser.";
+    readonly openHostBrowser: "Open in host browser";
+    readonly authenticatedLink: "Open authenticated link";
+    readonly browserLinkHint: "If your browser did not open:";
     readonly imageHint: "Use an installed desktop image, for example wrapvm-dsh:desktop.";
     readonly paused: "Paused";
     readonly environmentSelected: "VM environment selected";

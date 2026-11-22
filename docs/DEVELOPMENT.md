@@ -1,36 +1,38 @@
 # Development and validation
 
-## Source layout
+## Standalone repository
 
-This repository publishes the plugin source for version 0.2.2. Its build configuration and relative test imports expect the DeepSeek Harness workspace layout, with this package at `packages/bundle/wrapvm-isolate/`. Workspace dependencies are intentional; running `npm install` at this standalone checkout is not a supported build or installation workflow.
+The source and release artifacts live here. Harness core, installed packages and user profiles must not be modified to develop the plugin.
 
-Use a compatible Harness 0.2.2-rc.2 development checkout and its documented dependency/bootstrap workflow. Copy the plugin package into the path above. Use that workspace's TypeScript, Typert generation and tsdown tooling. `tsconfig.host.json` identifies the active host compilation roots, and `tsconfig.client.json` identifies the client. Typert metadata must be regenerated when the Remote contract changes. This repository does not vendor Harness, its dependency lockfile, its core source or any core patches.
-
-For an already prepared workspace, the client checks used for the 0.2.2 UI update (run from the Harness root) were:
+Use Node 25 and an existing compatible Harness 0.2.2-rc.5 checkout with its dependencies prepared (host and client library projects built). Set `DSH_WORKSPACE` to that checkout. This repository's `node_modules` must resolve the same development dependencies (local links to that checkout are sufficient); `link-dev.mjs` creates local links without replacing existing entries. The scripts do not install dependencies.
 
 ```sh
-node node_modules/typescript/bin/tsc -p packages/bundle/wrapvm-isolate/tsconfig.client.json
-./node_modules/.bin/vitest run \
-  packages/bundle/wrapvm-isolate/tests/v02-client.client.spec.tsx \
-  packages/bundle/wrapvm-isolate/tests/panel.client.spec.tsx \
-  packages/bundle/wrapvm-isolate/tests/registration.client.spec.ts
-cd packages/bundle/wrapvm-isolate
-../../../node_modules/.bin/tsdown --config tsdown.config.ts --env.DSH_BUILD_FACE client
+export DSH_WORKSPACE=/absolute/path/to/deepseek-harness
+node scripts/link-dev.mjs
+node scripts/dev.mjs check
+node scripts/generate-remote.mjs
+node scripts/dev.mjs build
+node scripts/dev.mjs test tests/preparation.spec.ts tests/workspace-copy.spec.ts \
+  tests/generated-read-face.spec.ts tests/v02-client.client.spec.tsx
 node scripts/pack-release.mjs
 ```
 
-The packaging script expects the workspace toolchain and previously built host/Remote artifacts; it does not build the whole package. It converts workspace dependency references to the target release in a staging directory. The checked-in `lib/` files come from the verified release archive. Install `dist/*.tgz`, not this source directory.
+`dev.mjs` generates local configurations in ignored `.dev/`, translates legacy test imports and runs package-only TypeScript/Vitest/tsdown. References use the already-built DSH dependencies; no reference project is rebuilt. `generate-remote.mjs` analyzes a private source snapshot under `.dev/` and writes only this bundle's Remote artifacts. `pack-release.mjs` stages the built package, resolves workspace versions and packs with lifecycle scripts disabled. It writes the archive and SHA-256 to `dist/`; it does not install it.
 
-## Retained prototypes
+The optional isolated Docker check creates its own memory inventory and temporary project. It exercises automatic prepare, copy, binding, retry, pause/resume, stop/start, import/export and Chrome, and removes only resources labelled with IDs from its own inventory:
 
-All plugin-local source is preserved, including earlier protected-mode experiments that are **not wired into the shipped host**. These include activation/admission/capability/grant/policy/projection helpers, core-fence, host-contributors, guest-shell, session-metadata, session-events, binding-session and vm-command. Their related tests describe experimental contracts and may require unreleased core APIs; they are not a supported stock-Harness test suite or evidence of protection. The active host roots and actual imports are the authority for shipped behavior. There is no protected `/use-vm` command, host-tool disabling, durable global binding authority, or complete network isolation in this release.
+```sh
+WRAPVM_LIVE_ACCEPTANCE=1 node scripts/dev.mjs test tests/agent-autonomy.live.spec.ts
+```
 
-## Validation recorded for 0.2.2
+Run the installed-runtime import smoke with the desktop app's Electron binary in Node mode and `tests/installed-runtime-loader.mjs`. It reads installed dependencies without installing, restarting or altering the running app. This validates import compatibility, not an assembled GUI or full provider lifecycle.
 
-- 16 focused client tests passed; scoped client TypeScript and lint passed.
-- Client bundle built and the 0.2.2 archive installed and enabled in Harness 0.2.2-rc.2.
-- In the desktop app: empty inventory, resource card, long name, creation, limits dialog, Escape/focus return, selection, assignment, embedded viewer, removal and the volume-choice preview were checked.
-- The disposable test container and volume were removed. Existing user containers were retained.
-- Light theme and narrow whole-window visual checks were not performed; the conversation sidebar was visually checked.
+## Active compilation and older experiments
 
-Live test files can create Docker resources. Read their opt-in flags and cleanup logic before running them. The installed-runtime smoke targets the macOS application path and expects the package's workspace location. Historical generated test fixtures are retained for reproducibility; they are not the installed entry point.
+`tsconfig.host.json` lists the active host roots; the client roots are in `tsconfig.client.json`. Earlier protected-mode prototypes remain in source, including activation/admission/grant/policy/projection, core-fence, host-contributors, guest-shell, session-metadata, binding-session and vm-command. They are **not imported by the shipped host**, and related historical tests require abandoned core changes. `loader-composition.spec.ts` likewise targets the retired single-container API and is not the current integration suite. Use `generated-read-face.spec.ts` and `agent-autonomy.live.spec.ts` for the shipped interface.
+
+There is no protected slash command, host-tool disabling, global binding authority or complete network isolation. No core patch is part of this release.
+
+## 0.3.0 validation
+
+See [the automatic-workflow release notes](RELEASE-0.3.0.md) and [the external-browser update](RELEASE-0.3.1.md) for the exact final verification results. The installed desktop remains on its previous version. GUI component tests and generated Gateway checks are separate from inspection of the assembled app, which is deliberately deferred until installation is requested.

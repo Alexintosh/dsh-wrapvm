@@ -1,35 +1,24 @@
-/** Pack the built bundle for the DSH release named by its engine requirement. */
+/** Build an installable archive without installing or running package lifecycle scripts. */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, existsSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
-
-const bundle = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const source = JSON.parse(readFileSync(join(bundle, 'package.json'), 'utf8'))
-const target = source.engines.dsh
-if (source.version !== '0.2.2' || target !== '0.2.2-rc.2') throw new Error('Unexpected bundle or DSH release version')
-const staging = mkdtempSync(join(bundle, '.release-pack-'))
-const run = (command, args, cwd) => execFileSync(command, args, {
-  cwd, stdio: 'inherit', env: { ...process.env, npm_config_ignore_scripts: 'true' },
-})
+import { createHash } from 'node:crypto'
+const root=resolve(import.meta.dirname,'..')
+const manifest=JSON.parse(readFileSync(join(root,'package.json'),'utf8'))
+const target=manifest.engines.dsh
+if(target!=='0.2.2-rc.5')throw Error('Review host compatibility before changing the DSH target')
+const staging=mkdtempSync(join(root,'.release-pack-'))
 try {
-  run(process.execPath, [resolve(bundle, '../../../node_modules/pnpm/bin/pnpm.cjs'), 'pack', '--pack-destination', staging], bundle)
-  const candidates = readdirSync(staging).filter(name => name.endsWith('.tgz'))
-  if (candidates.length !== 1) throw new Error('Expected exactly one staged archive')
-  run('tar', ['-xzf', join(staging, candidates[0]), '-C', staging], bundle)
-  const dir = join(staging, 'package')
-  const manifestPath = join(dir, 'package.json')
-  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'))
-  if (manifest.version !== source.version || manifest.engines.dsh !== target) throw new Error('Staged version mismatch')
-  for (const section of ['dependencies', 'peerDependencies', 'devDependencies']) {
-    for (const [name, version] of Object.entries(manifest[section] ?? {})) {
-      if (!name.startsWith('@deepseek-ai/dsh-')) continue
-      if (version !== '0.2.2-rc.1' && version !== target) throw new Error(`Unexpected ${name} version: ${version}`)
-      manifest[section][name] = target
-    }
-  }
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
-  run(join(dirname(process.execPath), 'npm'), ['pack', '--ignore-scripts', '--workspaces=false', '--pack-destination', bundle], dir)
-} finally {
-  rmSync(staging, { recursive: true, force: true })
-}
+ for(const item of ['lib','locale','docs','icon.svg','cordis.patch.yml','README.md','LICENSE'])if(existsSync(join(root,item)))cpSync(join(root,item),join(staging,item),{recursive:true})
+ for(const section of ['dependencies','peerDependencies','devDependencies'])for(const [name,version] of Object.entries(manifest[section]??{})){
+  if(!version.startsWith('workspace:'))continue
+  manifest[section][name]=name.startsWith('@deepseek-ai/dsh-')?target:JSON.parse(readFileSync(join(root,'node_modules',name,'package.json'),'utf8')).version
+ }
+ writeFileSync(join(staging,'package.json'),JSON.stringify(manifest,null,2)+'\n')
+ const destination=join(root,'dist');mkdirSync(destination,{recursive:true})
+ const result=execFileSync(join(dirname(process.execPath),'npm'),['pack','--json','--ignore-scripts','--workspaces=false','--pack-destination',destination],{cwd:staging,encoding:'utf8',env:{...process.env,npm_config_ignore_scripts:'true'}})
+ const [{filename}]=JSON.parse(result)
+ const archive=join(destination,filename), digest=createHash('sha256').update(readFileSync(archive)).digest('hex')
+ writeFileSync(archive+'.sha256',`${digest}  ${filename}\n`)
+ console.log(`${archive}\nSHA-256 ${digest}`)
+}finally{rmSync(staging,{recursive:true,force:true})}

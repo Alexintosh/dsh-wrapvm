@@ -1,6 +1,6 @@
 {
   "name": "@deepseek-ai/dsh-wrapvm-isolate",
-  "version": "0.2.2",
+  "version": "0.3.2",
   "private": true,
   "description": "Wrapvm container lifecycle, guest tools, and a desktop viewer for DeepSeek Harness.",
   "type": "module",
@@ -48,8 +48,11 @@
     "docs/*"
   ],
   "scripts": {
-    "bundle": "tsdown",
-    "watch": "tsdown --watch"
+    "check": "node scripts/dev.mjs check",
+    "test": "node scripts/dev.mjs test",
+    "generate:remote": "node scripts/generate-remote.mjs",
+    "build": "node scripts/dev.mjs build",
+    "pack:release": "node scripts/pack-release.mjs"
   },
   "dependencies": {
     "@deepseek-ai/dsh-typert-protocol": "workspace:*",
@@ -88,7 +91,9 @@
     "@deepseek-ai/dsh-client-ui-layout": "workspace:*",
     "@deepseek-ai/dsh-client-ui-session": "workspace:*",
     "@deepseek-ai/dsh-client-ui-primitives": "workspace:*",
-    "@deepseek-ai/dsh-util-crypto": "workspace:*"
+    "@deepseek-ai/dsh-util-crypto": "workspace:*",
+    "@deepseek-ai/dsh-working-directory": "workspace:*",
+    "@deepseek-ai/dsh-user-approval": "workspace:*"
   },
   "dsh": {
     "bundle": {
@@ -109,7 +114,7 @@
   },
   "engines": {
     "node": ">=24.9.0",
-    "dsh": "0.2.2-rc.2"
+    "dsh": "0.2.2-rc.5"
   },
   "license": "MIT"
 }

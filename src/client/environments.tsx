@@ -37,6 +37,19 @@ export function Environments({ remote, t }: EnvironmentsProps) {
   const [mountWrite, setMountWrite] = useState(false)
   const refresh = async () => { try { setItems((await remote.v02Snapshot(null)).environments) } catch (e) { setError(e instanceof Error ? e.message : t('failed')) } }
   useEffect(() => { let alive = true; void remote.v02Snapshot(null).then((s) => { if (alive) setItems(s.environments) }, (e: unknown) => { if (alive) setError(e instanceof Error ? e.message : t('failed')) }); return () => { alive = false } }, [remote, t])
+  // Refresh external tool mutations while this page is mounted; never overlap requests.
+  useEffect(() => {
+    let alive = true, pending = false
+    const tick = async () => {
+      if (busy || pending || document.visibilityState === 'hidden') return
+      pending = true
+      try { const next = await remote.v02Snapshot(null); if (alive) setItems(next.environments) }
+      catch (e) { if (alive) setError(e instanceof Error ? e.message : t('failed')) }
+      finally { pending = false }
+    }
+    const timer = setInterval(() => { void tick() }, 5000)
+    return () => { alive = false; clearInterval(timer) }
+  }, [remote, busy, t])
   const ids = items?.map(item => item.id).sort().join('\u0000') ?? ''
   useEffect(() => {
     if (!ids || !remote.v02WatchResources) return

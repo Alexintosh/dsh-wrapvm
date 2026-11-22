@@ -16,6 +16,8 @@ import { defineDomain } from '@deepseek-ai/dsh-storage-domain'
 import type { ContentBlock } from '@deepseek-ai/dsh-llm'
 import { defineTool, type ToolRunContext } from '@deepseek-ai/dsh-tools'
 import { Remote, TypertRemoteService } from '@deepseek-ai/dsh-typert-protocol'
+import { preparationSchema, SessionOperations, type Preparation, type PreparationStore } from './preparation.ts'
+import { prepareForAgent, workspaceForAgent, workspaceInfo, type WorkspaceRuntime } from './agent-workspaces.ts'
 import { randomUUID } from 'node:crypto'
 import z from '@deepseek-ai/schemastery'
 import { z as validate } from 'zod'
@@ -50,6 +52,14 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
   /** Docker executable. */
   backend: string
+  /** Locally installed desktop image for automatic creation; never implicitly pulled. */
+  agentImage?: string
+  /** CPU allocation for new agent environments (1000 = one core). */
+  agentCpuMillis?: number
+  /** Memory allocation for new agent environments, in bytes. */
+  agentMemoryBytes?: number
+  /** Explicit network default for automatic creation; offline creation is unsupported. */
+  agentInternetAccess?: boolean
   /** Shared resource sampling cadence in milliseconds. */
   metricsCadenceMs: number
   /** Age after which resource samples are stale. */
@@ -67,6 +77,7 @@ const STATUS_SCHEMA = {
     running: { type: 'boolean', required: true },
     viewerPort: { type: 'number', required: true },
     cdpPort: { type: 'number', required: true },
+    next: { type: 'string' },
     workspaceDir: { oneOf: [{ type: 'string' }, { type: 'null' }] },
   },
 } as const
@@ -133,6 +144,10 @@ export class WrapvmIsolateService extends TypertRemoteService {
 
   static Config = z.object({
     backend: z.string().default('docker'),
+    agentImage: z.string().default('wrapvm-dsh:desktop'),
+    agentCpuMillis: z.number().default(2000),
+    agentMemoryBytes: z.number().default(2147483648),
+    agentInternetAccess: z.boolean().default(true),
     metricsCadenceMs: z.number().default(5000),
     metricsStalenessMs: z.number().default(15000),
   })
@@ -142,6 +157,9 @@ export class WrapvmIsolateService extends TypertRemoteService {
   private manager: EnvironmentManager | undefined
   private backend: DockerEnvironmentBackend | undefined
   private bindings: BindingRegistry | undefined
+  private preparationStore: PreparationStore | undefined
+  private activePreparations: { get(key: string): Preparation | undefined; put(key: string, value: Preparation): Promise<void> } | undefined
+  private readonly sessionOperations = new SessionOperations()
   private readonly leases = new ExecutionLeaseRegistry()
   private managerReady: Promise<void> | undefined
   private revision = 0
@@ -162,6 +180,7 @@ export class WrapvmIsolateService extends TypertRemoteService {
       const lifetime = new AbortController()
       let close: (() => Promise<void>) | undefined
       let closeBindings: (() => Promise<void>) | undefined
+      let closePreparations: (() => Promise<void>) | undefined
       inner.effect(() => async () => {
         disposed = true
         lifetime.abort()
@@ -173,8 +192,11 @@ export class WrapvmIsolateService extends TypertRemoteService {
           this.managerReady = undefined
           this.backend = undefined
           this.bindings = undefined
+          this.preparationStore = undefined
+          this.activePreparations = undefined
           this.resourceLifetime = undefined
         }
+        if (closePreparations !== undefined) await closePreparations()
         if (closeBindings !== undefined) await closeBindings()
         if (close !== undefined) await close()
       }, 'wrapvm.inventory')
@@ -192,6 +214,16 @@ export class WrapvmIsolateService extends TypertRemoteService {
           ])) } },
         } as const))
         closeBindings = () => bindingDomain.close()
+        const preparationDomain = await inner.storageDomain.open(defineDomain({ name: 'wrapvm_preparations', version: 1, layout: 'per-record', tables: { records: { valueSchema: preparationSchema }, active: { valueSchema: preparationSchema } } } as const))
+        closePreparations = () => preparationDomain.close()
+        if (disposed) { await closePreparations(); await closeBindings(); return }
+        let storageUncertain = false
+        const guarded = (name: 'records' | 'active'): PreparationStore => ({
+          get: key => { if (storageUncertain) throw new Error('wrapvm: preparation storage write outcome is uncertain; reload before retrying'); return preparationDomain.table(name).get(key) },
+          put: async (key, value) => { if (storageUncertain) throw new Error('wrapvm: preparation storage is uncertain'); try { await preparationDomain.table(name).put(key, value) } catch (error) { storageUncertain = true; throw error } },
+        })
+        this.preparationStore = guarded('records')
+        this.activePreparations = guarded('active')
         const table = bindingDomain.table('events')
         const events: BindingEvent[] = (table.get('current') ?? []).map(event => event.type === 'wrapvm/environment-bound' ? { type: event.type, sessionKey: event.sessionKey, environmentId: asEnvironmentId(event.environmentId), generation: event.generation, timestamp: event.timestamp, ...(event.shared === undefined ? {} : { shared: event.shared }) } : { ...event, environmentId: asEnvironmentId(event.environmentId) })
         const bindings = new BindingRegistry({ emit: async event => {
@@ -231,7 +263,7 @@ export class WrapvmIsolateService extends TypertRemoteService {
     })
   }
 
-  private async run(argv: readonly string[], options: { timeoutMs?: number; cwd?: string; signal?: AbortSignal | undefined } = {}): Promise<{
+  private async run(argv: readonly string[], options: { timeoutMs?: number; cwd?: string; signal?: AbortSignal | undefined; stdin?: string; maxBytes?: number } = {}): Promise<{
     exitCode: number | null
     signal: NodeJS.Signals | null
     stdout: string
@@ -247,12 +279,13 @@ export class WrapvmIsolateService extends TypertRemoteService {
       graceMs: 1_000,
       signal,
       stdio: {
-        stdin: 'ignore',
-        stdout: { maxBytes: 4 << 20 },
+        stdin: options.stdin === undefined ? 'ignore' : { data: options.stdin },
+        stdout: { maxBytes: options.maxBytes ?? (4 << 20) },
         stderr: { maxBytes: 4 << 20 },
       },
     })
     const outcome = await proc.done
+    await proc.waitForExit()
     signal.throwIfAborted()
     return {
       exitCode: outcome.exitCode,
@@ -304,7 +337,7 @@ export class WrapvmIsolateService extends TypertRemoteService {
         bindings: bindings.usersOf(record.id).flatMap(key => { const b = bindings.binding(key); return b ? [b] : [] }), bindingsComplete: true,
         operations: manager.operationsFor(record.id).map(op => this.operation(op)), uncertainty: manager.uncertainty(record.id)?.error ?? null }
     }))
-    return { environments, policy: sessionKey === null ? null : this.policy(sessionKey), binding: sessionKey === null ? null : bindings.binding(sessionKey) ?? null, bindingComplete: true }
+    return { environments, policy: sessionKey === null ? null : this.policy(sessionKey), binding: sessionKey === null ? null : bindings.binding(sessionKey) ?? null, bindingComplete: true, workspace: sessionKey === null ? null : this.workspaceView(sessionKey) }
   }
 
   @Remote
@@ -340,17 +373,25 @@ export class WrapvmIsolateService extends TypertRemoteService {
   async v02ConfirmRemoval(id: string, token: string, deleteVolumes: boolean, key: string): Promise<VmOperationView> { this.owner(); return this.operation(await (await this.managed()).manager.remove(asEnvironmentId(id), token, deleteVolumes, { idempotencyKey: key })) }
   @Remote
   async v02Bind(session: string, id: string, _key: string): Promise<VmOperationView> {
-    this.owner(); const { manager, bindings } = await this.managed(); const env = asEnvironmentId(id)
-    if (!manager.get(env)) throw new Error('wrapvm-isolate: unknown environment')
-    await bindings.bind(session, env, (bindings.binding(session)?.generation ?? 0) + 1, { allowShared: true })
-    return this.operation({ id: randomUUID(), environmentId: env, kind: 'bind', state: 'completed', settledAt: Date.now() })
+    this.owner()
+    return await this.sessionOperations.run(session, async () => {
+      const { manager, bindings } = await this.managed()
+      const env = asEnvironmentId(id)
+      if (!manager.get(env)) throw new Error('wrapvm-isolate: unknown environment')
+      await bindings.bind(session, env, (bindings.binding(session)?.generation ?? 0) + 1, { allowShared: true })
+      return this.operation({ id: randomUUID(), environmentId: env, kind: 'bind', state: 'completed', settledAt: Date.now() })
+    })
   }
   @Remote
   async v02Unbind(session: string, _key: string): Promise<VmOperationView> {
-    this.owner(); const { bindings } = await this.managed(); const binding = bindings.binding(session)
-    if (!binding) throw new Error('wrapvm-isolate: no environment selected')
-    await bindings.unbind(session)
-    return this.operation({ id: randomUUID(), environmentId: binding.environmentId, kind: 'unbind', state: 'completed', settledAt: Date.now() })
+    this.owner()
+    return await this.sessionOperations.run(session, async () => {
+      const { bindings } = await this.managed()
+      const binding = bindings.binding(session)
+      if (!binding) throw new Error('wrapvm-isolate: no environment selected')
+      await bindings.unbind(session)
+      return this.operation({ id: randomUUID(), environmentId: binding.environmentId, kind: 'unbind', state: 'completed', settledAt: Date.now() })
+    })
   }
 
   @Remote({ mode: 'stream' })
@@ -362,7 +403,7 @@ export class WrapvmIsolateService extends TypertRemoteService {
     this.listeners.add(notify); ended.addEventListener('abort', notify, { once: true })
     try {
       while (!ended.aborted) {
-        yield { epoch: this.hostEpoch, revision: this.revision, policy: this.policy(sessionKey), binding: this.bindings?.binding(sessionKey) ?? null, bindingComplete: true }
+        yield { epoch: this.hostEpoch, revision: this.revision, policy: this.policy(sessionKey), binding: this.bindings?.binding(sessionKey) ?? null, bindingComplete: true, workspace: this.workspaceView(sessionKey) }
         await wake.promise; wake = Promise.withResolvers<void>()
       }
     } finally { this.listeners.delete(notify); ended.removeEventListener('abort', notify) }
@@ -378,28 +419,30 @@ export class WrapvmIsolateService extends TypertRemoteService {
       const result = await this.run([this.config.backend, 'exec', target.containerId, GUEST_ENTRYPOINT, 'sh', '-lc', 'exec "$@"', 'wrapvm-viewer', 'wrap-desktop', 'url', origin], { timeoutMs: 10000 })
       if (result.exitCode !== 0) throw new Error('wrapvm-isolate: could not read viewer link')
       const url = new URL(result.stdout.trim())
-      if (url.origin !== origin || url.username || url.password) throw new Error('wrapvm-isolate: invalid viewer link')
+      if (url.origin !== origin || url.username || url.password || !url.searchParams.get('token')) throw new Error('wrapvm-isolate: invalid viewer link')
       if (epoch !== this.hostEpoch || revision !== this.revision) throw new Error('wrapvm-isolate: session selection changed')
       return { url: url.href, expiresAt: null, epoch, revision }
     })
   }
 
   private async withTarget<T>(session: string, name: string, run: (target: EnvironmentTarget) => Promise<T>, requireEndpoints = true): Promise<T> {
-    const { manager, backend, bindings } = await this.managed()
-    const selected = bindings.binding(session)
-    if (!selected) throw new Error('wrapvm-isolate: select a VM environment for this conversation')
-    const release = await this.leases.acquireExecution(selected.environmentId, name)
-    try {
-      if (bindings.binding(session)?.generation !== selected.generation) throw new Error('wrapvm-isolate: environment selection changed')
-      if (manager.uncertainty(selected.environmentId)) throw new Error('wrapvm-isolate: environment has an unknown operation outcome')
-      const acquired = await backend.captureTarget(selected.environmentId, this.hostLifetime.signal)
-      if (acquired.kind !== 'captured') throw new Error(`wrapvm-isolate: environment target ${acquired.kind}`)
-      if (requireEndpoints && (acquired.target.ports.viewerPort === 0 || acquired.target.ports.cdpPort === 0)) throw new Error('wrapvm-isolate: environment is not running')
-      if (manager.get(selected.environmentId)?.containerId !== acquired.target.containerId) throw new Error('wrapvm-isolate: container differs from inventory')
-      const checked = await backend.verifyTarget(acquired.target, this.hostLifetime.signal)
-      if (checked.container.kind !== 'owned') throw new Error('wrapvm-isolate: container ownership could not be verified')
-      return await run(acquired.target)
-    } finally { release() }
+    return await this.sessionOperations.run(session, async () => {
+      const { manager, backend, bindings } = await this.managed()
+      const selected = bindings.binding(session)
+      if (!selected) throw new Error('wrapvm-isolate: no environment selected; call vm_prepare to create or select one automatically')
+      const release = await this.leases.acquireExecution(selected.environmentId, name)
+      try {
+        if (bindings.binding(session)?.generation !== selected.generation) throw new Error('wrapvm-isolate: environment selection changed')
+        if (manager.uncertainty(selected.environmentId)) throw new Error('wrapvm-isolate: environment has an unknown operation outcome')
+        const acquired = await backend.captureTarget(selected.environmentId, this.hostLifetime.signal)
+        if (acquired.kind !== 'captured') throw new Error(`wrapvm-isolate: environment target ${acquired.kind}`)
+        if (requireEndpoints && (acquired.target.ports.viewerPort === 0 || acquired.target.ports.cdpPort === 0)) throw new Error('wrapvm-isolate: environment is not running')
+        if (manager.get(selected.environmentId)?.containerId !== acquired.target.containerId) throw new Error('wrapvm-isolate: container differs from inventory')
+        const checked = await backend.verifyTarget(acquired.target, this.hostLifetime.signal)
+        if (checked.container.kind !== 'owned') throw new Error('wrapvm-isolate: container ownership could not be verified')
+        return await run(acquired.target)
+      } finally { release() }
+    })
   }
 
   /** Watch shared resource samples for managed environments until cancellation. */
@@ -524,9 +567,67 @@ export class WrapvmIsolateService extends TypertRemoteService {
     return session
   }
 
+  private workspaceView(session: string) {
+    const record = this.currentPreparation(session)
+    return record ? { phase: record.phase, mode: record.mode, guestPath: record.guestPath, sourceRoot: record.sourceRoot } : null
+  }
+
+  private currentPreparation(session: string): Preparation | undefined {
+    const record = this.activePreparations?.get(session)
+    return record?.environmentId === this.bindings?.binding(session)?.environmentId ? record : undefined
+  }
+
+  private async workspaceRuntime(): Promise<WorkspaceRuntime> {
+    const managed = await this.managed()
+    const store = this.preparationStore, active = this.activePreparations
+    if (!store || !active) throw new Error('wrapvm-isolate: preparation storage is unavailable')
+    return { ...managed, store, leases: this.leases, lifetime: AbortSignal.any([this.hostLifetime.signal, this.resourceLifetime?.signal ?? this.hostLifetime.signal]), binary: this.config.backend,
+      defaults: { image: this.config.agentImage ?? 'wrapvm-dsh:desktop', cpuMillis: this.config.agentCpuMillis ?? 2000,
+        memoryBytes: this.config.agentMemoryBytes ?? 2147483648, internetAccess: this.config.agentInternetAccess ?? true },
+      current: session => this.currentPreparation(session),
+      select: async record => { await active.put(record.session, record); this.revision++; for (const listener of this.listeners) listener() },
+      run: (argv, options) => this.run(argv, options),
+    }
+  }
+
   private registerTools(ctx: Context): void {
     const tools = ctx.tools
     if (tools === undefined) throw new Error('wrapvm-isolate: ctx.tools is not mounted')
+
+    const objectOutput = { schema: { type: 'object', additionalProperties: true } as const, render: (_args: object, result: object) => [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] }
+    tools.register(defineTool({
+      name: 'vm_prepare',
+      description: 'Prepare a VM for this conversation automatically: create/reuse/start/resume, copy the current project into a persistent guest workspace and select the environment. No manual GUI steps. Uses configured image/resources; desktop defaults to internet enabled. Never deletes or resets existing environments. Retry preserves guest edits.',
+      parameters: {
+        description: { type: 'string', required: true, description: 'Why this task needs the VM and project copy.' },
+        environmentId: { type: 'string', description: 'Optional managed environment explicitly requested by the user.' },
+        workspaceMode: { type: 'string', enum: ['copy', 'empty', 'bind-readonly', 'bind-readwrite'], description: 'Default copy; mounts require native approval for the exact project and access mode.' },
+      },
+      output: objectOutput,
+      execute: async (args, execution) => await this.sessionOperations.run(this.sessionKey(execution), async () => await prepareForAgent(ctx, await this.workspaceRuntime(), execution, args)),
+      presentCall: args => ({ card: 'generic', title: 'Prepare VM', rawInput: { task: args.description, workspaceMode: args.workspaceMode ?? 'copy', newEnvironmentInternet: this.config.agentInternetAccess ?? true }, kind: 'execute' }),
+    }))
+    tools.register(defineTool({
+      name: 'vm_environments', description: 'List managed environments without creating or selecting one. Use vm_prepare(environmentId) to select one explicitly. Does not expose other conversation identifiers.',
+      parameters: {}, output: objectOutput,
+      execute: async (_args, execution) => {
+        const session = this.sessionKey(execution), { manager, backend, bindings } = await this.managed()
+        return { environments: await Promise.all((await manager.list(execution.signal)).map(async record => {
+          const target = await backend.captureTarget(record.id, execution.signal)
+          const health = target.kind === 'captured' ? await backend.probe(target.target, execution.signal) : null
+          return { id: record.id, displayName: record.displayName ?? record.id, image: record.image, state: health?.phase ?? target.kind,
+            selected: bindings.binding(session)?.environmentId === record.id, workspace: this.currentPreparation(session)?.environmentId === record.id ? workspaceInfo(this.currentPreparation(session)) : null,
+            shared: bindings.usersOf(record.id).some(key => key !== session), uncertainty: manager.uncertainty(record.id)?.error ?? null }
+        })) }
+      }, presentCall: () => ({ card: 'generic', title: 'VM environments', kind: 'read' }),
+    }))
+    tools.register(defineTool({
+      name: 'vm_workspace', description: 'Inspect a prepared workspace, import named project files without overwriting differing guest files, or export named guest files to a NEW .wrapvm-exports review directory in the session project. Exports report host conflicts and never overwrite originals. No arbitrary host paths.',
+      parameters: { action: { type: 'string', enum: ['status', 'import', 'export'], required: true }, paths: { type: 'array', items: { type: 'string' }, description: '1–100 relative project file paths for import/export.' } },
+      output: objectOutput,
+      execute: async (args, execution) => await this.sessionOperations.run(this.sessionKey(execution), async () => await workspaceForAgent(ctx, await this.workspaceRuntime(), execution, args)),
+      presentCall: args => ({ card: 'generic', title: `VM workspace · ${args.action}`, kind: args.action === 'status' ? 'read' : 'edit' }),
+    }))
 
     tools.register(defineTool({
       name: 'load_vm_skill',
@@ -552,24 +653,29 @@ export class WrapvmIsolateService extends TypertRemoteService {
       },
       execute: async (_args: object, execution: ToolRunContext) => {
         const session = this.sessionKey(execution)
-        return await this.withTarget(session, 'vm_status', async target => {
-          const { manager, backend } = await this.managed()
-          const record = manager.get(target.environmentId)
-          if (!record) throw new Error('wrapvm-isolate: environment no longer exists')
-          const health = await backend.probe(target, execution.signal)
-          return { containerName: target.containerName, image: record.image, state: health.phase, running: health.phase === 'running', viewerPort: target.ports.viewerPort, cdpPort: target.ports.cdpPort, workspaceDir: '/home/user/workspace' }
-        }, false)
+        const { manager, backend, bindings } = await this.managed()
+        const selected = bindings.binding(session)
+        if (!selected) return { containerName: '', image: '', state: 'unassigned', running: false, viewerPort: 0, cdpPort: 0, workspaceDir: null, next: 'Call vm_prepare; no manual GUI setup is required.' }
+        const record = manager.get(selected.environmentId)
+        const acquired = await backend.captureTarget(selected.environmentId, execution.signal)
+        if (acquired.kind !== 'captured') return { containerName: '', image: record?.image ?? '', state: acquired.kind, running: false, viewerPort: 0, cdpPort: 0, workspaceDir: null, next: 'Inspect the missing or unverifiable environment; do not silently replace or delete it.' }
+        const target = acquired.target
+        const health = await backend.probe(target, execution.signal)
+        const uncertainty = manager.uncertainty(selected.environmentId)
+        return { containerName: target.containerName, image: record?.image ?? '', state: uncertainty ? 'outcome-unknown' : health.phase, running: !uncertainty && health.phase === 'running', viewerPort: target.ports.viewerPort, cdpPort: target.ports.cdpPort, workspaceDir: this.currentPreparation(session)?.guestPath ?? VM_WORKSPACE,
+          next: uncertainty ? 'Inspect the uncertain operation; do not reset the environment.' : 'Call vm_prepare to prepare the project or resume this environment, then use the guest tools.' }
+
       },
       presentCall: () => ({ card: 'generic', title: 'VM status', kind: 'read' }),
     }))
 
     tools.register(defineTool({
       name: 'vm_shell',
-      description: 'Run a shell command inside the isolated wrapvm desktop VM as its configured desktop user. Each call runs in a fresh login shell inside the container; pass `workdir` as an absolute path inside the VM (default /home/user/workspace). Each output stream retains at most 4 MiB of its tail. Provide `description` before `command` in the arguments. Before any delete or move, verify the resolved path is the intended one.',
+      description: 'Run a shell command inside the isolated wrapvm desktop VM as its configured desktop user. Each call runs in a fresh login shell inside the container; pass `workdir` as an absolute path inside the VM (default: prepared project path, otherwise /home/user/workspace). Each output stream retains at most 4 MiB of its tail. Provide `description` before `command` in the arguments. Before any delete or move, verify the resolved path is the intended one.',
       parameters: {
         command: { type: 'string', required: true, description: 'Shell command to run inside the VM.' },
         description: { type: 'string', required: true, description: 'Short description shown in the UI.' },
-        workdir: { type: 'string', description: 'Absolute working directory inside the VM; defaults to /home/user/workspace.' },
+        workdir: { type: 'string', description: 'Absolute working directory inside the VM; defaults to the prepared project path, otherwise /home/user/workspace.' },
         timeoutMs: { type: 'number', description: 'Command timeout in milliseconds; defaults to 120000.' },
       },
       output: {
@@ -579,7 +685,10 @@ export class WrapvmIsolateService extends TypertRemoteService {
           text: [value.output, value.stderr, `[exit code: ${value.exitCode}]`].filter(Boolean).join('\n'),
         }],
       },
-      execute: async (args: { command: string; workdir?: string; timeoutMs?: number }, execution: ToolRunContext) => await this.withTarget(this.sessionKey(execution), 'vm_shell', target => this.exec(target, args, execution.signal)),
+      execute: async (args: { command: string; workdir?: string; timeoutMs?: number }, execution: ToolRunContext) => {
+        const session = this.sessionKey(execution)
+        return await this.withTarget(session, 'vm_shell', target => this.exec(target, { ...args, workdir: args.workdir ?? this.currentPreparation(session)?.guestPath ?? VM_WORKSPACE }, execution.signal))
+      },
       presentCall: (args: { command: string; description: string; workdir?: string }) => ({
         card: 'terminal',
         title: args.command,

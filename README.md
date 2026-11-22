@@ -1,86 +1,38 @@
-# dsh-wrapvm
+# DSH Isolated
 
-A DeepSeek Harness plugin for working in managed Docker desktop environments. Create an environment, select it for a conversation, and give your agent a guest shell, browser, and desktop while you follow along in the viewer.
+Give a DeepSeek Harness conversation its own Linux desktop. Your agent can run shell commands, use Chrome and interact with the desktop inside a Docker container. Open **VM desktop** alongside the chat to see the same screen.
 
-**DeepSeek Harness 0.2.2-rc.2** · **Docker** · **Bundle 0.2.2**
+## Install
 
-- Create, start, stop, pause, resume, and remove managed environments from the UI.
-- Select an environment per conversation and open its desktop in the right sidebar.
-- Set CPU and memory limits, inspect resource statistics, and explicitly enable internet access for the current desktop backend.
-- Keep work in a persistent workspace volume, with optional explicit host folder mounts.
-- Give the agent purpose-built guest tools and six short guides for using them.
+You’ll need **DeepSeek Harness 0.2.2-rc.5**, a running Docker engine and a compatible Wrapvm desktop image on the machine that runs Harness. The plugin looks for `wrapvm-dsh:desktop` by default. If your local image uses another tag, set `agentImage` to that tag in the plugin configuration.
 
-## Requirements
+1. Download the [plugin bundle](https://github.com/Alexintosh/dsh-isolated/raw/refs/heads/main/dist/deepseek-ai-dsh-wrapvm-isolate-0.3.2.tgz). Keep the file as a `.tgz`. A [SHA-256 checksum](https://github.com/Alexintosh/dsh-isolated/raw/refs/heads/main/dist/deepseek-ai-dsh-wrapvm-isolate-0.3.2.tgz.sha256) is available for verification.
+2. In Harness, open **Plugins → Add plugin**, choose the downloaded archive and enable **Wrapvm desktop**. If Harness asks to restart, let it finish before opening a conversation.
+3. Open a conversation attached to a small project and send the prompt below.
 
-| Component | Requirement |
+> Prepare a VM for this project. Use the guest shell to show the current directory and list the project files.
+
+The agent calls `vm_prepare`, starts or resumes a container, and selects it for the conversation. With the default settings, it copies the project's working files into the guest. Seeing your filenames in the reply confirms that the guest shell can read the copy. Open **VM desktop** in the conversation sidebar to see the desktop, or select **Open in host browser** to open it in a separate window.
+
+## Try a small edit
+
+> In the guest workspace, create a file called vm-check.txt containing “Hello from the VM”. Export it so I can review it on my machine.
+
+Look in your project's `.wrapvm-exports/review-*` directory for the exported file. You decide which changes to bring back into the project. A named Docker volume keeps the guest workspace when you stop the environment. Open **VM environments** to start it again, see resource usage or change its CPU and memory limits.
+
+## What gets shared?
+
+- **Project files.** The default copy includes eligible uncommitted and untracked files. It skips Git history, dependencies, common credential files and symlinks. Review projects that contain sensitive material under other names. Each copy is limited to 5,000 files, 64 MiB total and 2 MiB per file.
+- **Host folders.** Choose a bind mount when you want the guest to see the live project. A read-write mount allows guest edits to change host files directly. Harness requests approval for the path and access mode.
+- **Tools and networking.** The plugin’s guest tools run inside the selected Docker container. Ordinary Harness tools still run with their host permissions. The desktop backend requires internet access. Viewer links grant access to the desktop, so keep them private.
+
+## If something goes wrong
+
+| What you see | What to check |
 | --- | --- |
-| DeepSeek Harness | 0.2.2-rc.2, running on the host with its plugin manager and web interface |
-| Runtime | Node.js 24.9 or later for the Harness runtime; a GUI installation may provide its own runtime |
-| Container engine | A working Docker installation and daemon accessible to Harness |
-| Desktop image | A compatible Wrapvm desktop image with `/opt/wrap/bin/wrap-entrypoint`, Chrome CDP, and `wrap-desktop` |
-| Plugin | A built `@deepseek-ai/dsh-wrapvm-isolate` 0.2.2 `.tgz` bundle available to the Harness host |
+| Docker is unavailable | Run `docker info` on the Harness host. Start the engine and retry the original prompt. |
+| The desktop image is missing | Run `docker image inspect wrapvm-dsh:desktop`, or substitute your configured tag. Install a compatible image locally before retrying. |
+| The project exceeds the copy limit | Open a smaller project directory in Harness and ask the agent to prepare it. |
+| The browser window doesn’t open | Click **Open authenticated link** in the viewer, or keep using the embedded desktop. |
 
-The backend has been exercised with Docker on OrbStack on arm64 using a local `wrapvm-dsh:desktop` image. The upstream image is `ghcr.io/tobi/wrapvm:desktop`; its availability and compatibility depend on your installation. On macOS, Docker runs containers through its engine VM; this plugin does not create a separate VM for each environment.
-
-## Get started
-
-Download the [0.2.2 bundle](dist/deepseek-ai-dsh-wrapvm-isolate-0.2.2.tgz) and its [SHA-256 checksum](dist/deepseek-ai-dsh-wrapvm-isolate-0.2.2.tgz.sha256). This is the package installed and checked in the desktop app. Install the archive, not the source directory: the source uses workspace dependencies.
-
-1. Start Docker and DeepSeek Harness. Download the `.tgz` above and place it on the Harness host.
-2. In the sidebar, open **Plugins** → **Add plugin**. Enter the absolute path to the `.tgz` in the package field, follow the installation prompts, and choose **Enable now** if offered. Restart if the manager requests it.
-3. Open **VM environments** → **New environment**. Enter a name and compatible image (for example, an installed `wrapvm-dsh:desktop`), set CPU in cores and memory in GiB, and check **Allow internet**. Offline creation is not supported. Optional host mounts are under **Shared folders**; enable writing only if needed. Select **Create environment**.
-4. Start the environment if it is stopped. Open a conversation, use the **VM desktop** panel in the right sidebar to select the environment, and open the desktop viewer if desired. Selection is specific to that conversation.
-5. Ask the agent to use the guest tools, for example:
-
-   > Check `vm_status`, then use `vm_shell` to list the workspace and `vm_browser` to open the app running inside the environment.
-
-The environment must be running for shell, browser, desktop, and viewer operations. The Settings page also provides access to the conversation desktop.
-
-## What changed in 0.2.2
-
-The environment page, Settings and conversation sidebar now use Harness controls, theme colors and typography. Resource cards show readable units; creation, limits and removal use native dialogs. The limits dialog starts from the selected environment’s allocation.
-
-## Agent tools
-
-| Tool | Purpose |
-| --- | --- |
-| `vm_status` | Inspect the selected environment's state, image, ports, and workspace path. |
-| `vm_shell` | Run a command in a fresh guest login shell; the default working directory is `/home/user/workspace`. |
-| `vm_browser` | Open and inspect pages, list tabs, navigate, evaluate JavaScript, and close tabs through guest Chrome. |
-| `vm_desktop` | Run `agent-desktop` commands in the guest desktop session. |
-| `load_vm_skill` | Load bundled guidance by name: `use-vm`, `vm-workspace`, `vm-browser`, `vm-desktop`, `vm-development`, or `vm-recovery`. |
-
-`use-vm` is a guidance name for `load_vm_skill`, not a slash command.
-
-## Workspace and lifecycle
-
-Each environment has a named Docker volume mounted at `/home/user/workspace`. Stopping preserves the container and workspace. Removal shows a confirmation preview and lets you choose whether to delete the workspace volume. Explicit host mounts expose the paths you choose, read-only by default unless writing is enabled; removal does not delete those host directories. Existing unrelated or unlabeled containers are not automatically imported.
-
-Environment inventory and conversation selection are persisted by the plugin. The local desktop viewer uses an ephemeral owner-only token; it is not included in `vm_status` or agent tool output.
-
-## Configuration
-
-The bundle defaults to the `docker` executable, a 5,000 ms resource sampling cadence, and a 15,000 ms staleness threshold. Its service configuration fields are `backend`, `metricsCadenceMs`, and `metricsStalenessMs`. Image, CPU, memory, internet access, and optional mounts are chosen when creating an environment; CPU and memory limits can also be updated from the environment page.
-
-## Boundaries and current limitations
-
-Harness continues to run on the host. Only the plugin's guest tools execute inside the selected container; ordinary Harness tools retain their existing permissions. Selection does not provide host-wide or complete network isolation. Disk quotas are not supported by this Docker backend. Cancelling a host-side command does not guarantee that the guest process has exited. Offline creation is rejected before allocating resources. Version 0.2.2 was installed and checked in the desktop app: creation, resource display, conversation assignment, embedded desktop and removal were exercised with a disposable environment. This is not a claim of host-wide isolation.
-
-## Development
-
-The current source, tests, generated runtime files and installable archive are included:
-
-| Path | Contents |
-| --- | --- |
-| `src/index.ts` | Host service, Remote methods and guest tools |
-| `src/client/` | Harness-native environment page, dialogs, session panel and viewer |
-| `src/` | Docker backend, inventory, lifecycle and supporting modules |
-| `tests/` | Unit, component, integration and opt-in live checks |
-| `lib/` | Runtime files from the verified 0.2.2 archive |
-| `dist/` | Installable bundle and checksum |
-
-The source build still uses the DeepSeek Harness workspace at `packages/bundle/wrapvm-isolate/`; this checkout is **not a standalone npm build**. No Harness core patches are included or required by the installed plugin. See [development and validation notes](docs/DEVELOPMENT.md) for the build context and the distinction between shipped functionality and retained prototypes.
-
-## Acknowledgments
-
-Built around [Wrapvm](https://github.com/tobi/wrapvm) and [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness), whose documentation covers Harness profiles and plugin management.
+For the full list of agent tools and configuration options, see the [plugin reference](docs/PACKAGE.md). To build the plugin or run its tests, see the [development guide](docs/DEVELOPMENT.md). This project uses [Wrapvm](https://github.com/tobi/wrapvm) and [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness).

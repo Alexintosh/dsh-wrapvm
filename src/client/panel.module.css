@@ -82,3 +82,6 @@
 @media (pointer: coarse) { .form input, .select { font-size: 16px; } }
 
 .form h3 { margin: 0; font-size: 14px; line-height: 22px; font-weight: 500; }
+
+.externalLink { color: var(--dsw-alias-label-primary); text-decoration: underline; text-underline-offset: 3px; overflow-wrap: anywhere; }
+.externalLink:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }

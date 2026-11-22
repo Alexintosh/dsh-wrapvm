@@ -25,6 +25,14 @@ declare module '@deepseek-ai/cordis' {
 export interface Config {
     /** Docker executable. */
     backend: string;
+    /** Locally installed desktop image for automatic creation; never implicitly pulled. */
+    agentImage?: string;
+    /** CPU allocation for new agent environments (1000 = one core). */
+    agentCpuMillis?: number;
+    /** Memory allocation for new agent environments, in bytes. */
+    agentMemoryBytes?: number;
+    /** Explicit network default for automatic creation; offline creation is unsupported. */
+    agentInternetAccess?: boolean;
     /** Shared resource sampling cadence in milliseconds. */
     metricsCadenceMs: number;
     /** Age after which resource samples are stale. */
@@ -36,10 +44,18 @@ export declare class WrapvmIsolateService extends TypertRemoteService {
     static inject: string[];
     static Config: z<Schemastery.ObjectS<NoInfer<{
         backend: z<string, string, "defined">;
+        agentImage: z<string, string, "defined">;
+        agentCpuMillis: z<number, number, "defined">;
+        agentMemoryBytes: z<number, number, "defined">;
+        agentInternetAccess: z<boolean, boolean, "defined">;
         metricsCadenceMs: z<number, number, "defined">;
         metricsStalenessMs: z<number, number, "defined">;
     }>>, Schemastery.ObjectT<NoInfer<{
         backend: z<string, string, "defined">;
+        agentImage: z<string, string, "defined">;
+        agentCpuMillis: z<number, number, "defined">;
+        agentMemoryBytes: z<number, number, "defined">;
+        agentInternetAccess: z<boolean, boolean, "defined">;
         metricsCadenceMs: z<number, number, "defined">;
         metricsStalenessMs: z<number, number, "defined">;
     }>>, "plain">;
@@ -48,6 +64,9 @@ export declare class WrapvmIsolateService extends TypertRemoteService {
     private manager;
     private backend;
     private bindings;
+    private preparationStore;
+    private activePreparations;
+    private readonly sessionOperations;
     private readonly leases;
     private managerReady;
     private revision;
@@ -121,6 +140,9 @@ export declare class WrapvmIsolateService extends TypertRemoteService {
     cdpEval(target: EnvironmentTarget, targetId: string, expression: string, timeoutMs?: number, signal?: AbortSignal): Promise<unknown>;
     private cdpNavigate;
     private sessionKey;
+    private workspaceView;
+    private currentPreparation;
+    private workspaceRuntime;
     private registerTools;
 }
 export default WrapvmIsolateService;

@@ -192,8 +192,8 @@ export declare const environmentDescriptorSchema: validate.ZodObject<{
     }, validate.core.$strip>>;
     desiredPhase: validate.ZodOptional<validate.ZodEnum<{
         running: "running";
-        stopped: "stopped";
         paused: "paused";
+        stopped: "stopped";
     }>>;
 }, validate.core.$strip>;
 export declare const environmentOperationSchema: validate.ZodObject<{
@@ -338,8 +338,8 @@ export declare const wrapvmInventoryDomainSpec: {
                     }, validate.core.$strip>>;
                     desiredPhase: validate.ZodOptional<validate.ZodEnum<{
                         running: "running";
-                        stopped: "stopped";
                         paused: "paused";
+                        stopped: "stopped";
                     }>>;
                 }, validate.core.$strip>>;
                 operations: validate.ZodRecord<validate.ZodString, validate.ZodObject<{

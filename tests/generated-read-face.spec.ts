@@ -108,7 +108,7 @@ it('uses the generated read face for unary replies, stream baselines and cancell
   expect(read.v02Create).toBeTypeOf('function')
   expect(read.v02Start).toBeTypeOf('function')
   expect(read.v02Bind).toBeTypeOf('function')
-  const operation = await read.v02Create!({ displayName: 'test', image: 'test', limits: { cpuMillis: 100, memoryBytes: 1048576, diskBytes: 100 }, internetAccess: false, mounts: [] }, 'unsupported-quota')
+  const operation = await read.v02Create!({ displayName: 'test', image: 'test', limits: { cpuMillis: 100, memoryBytes: 1048576, diskBytes: 100 }, internetAccess: true, mounts: [] }, 'unsupported-quota')
   expect(operation).toMatchObject({ state: 'failed', errorCode: 'disk-quota-unsupported' })
   await expect(host.wrapvmIsolate.v02Bind(id, env1, 'direct')).rejects.toThrow('authenticated owner')
   const guest = new Peer(host, { principal: { kind: 'wrapvm-test-guest' } })
@@ -126,6 +126,9 @@ it('uses the generated read face for unary replies, stream baselines and cancell
   expect(selected.value).toMatchObject({ binding: { environmentId: env1 } })
   if (selected.done) throw new Error('session stream ended')
   expect(await read.v02ViewerUrl!(id, selected.value.epoch, selected.value.revision)).toMatchObject({ url: 'http://127.0.0.1:55000/?token=fixture-viewer-secret' })
+  await writeFile(join(root, 'viewer-without-token'), '')
+  await expect(read.v02ViewerUrl!(id, selected.value.epoch, selected.value.revision)).rejects.toThrow()
+  await rm(join(root, 'viewer-without-token'))
   const execution = { agent: { session: { id } }, signal: new AbortController().signal } as never
   const shell = host.tools.definitions().find(tool => tool.name === 'vm_shell')!
   const desktop = host.tools.definitions().find(tool => tool.name === 'vm_desktop')!

@@ -15,11 +15,23 @@ export function SessionDesktop({ sessionKey, remote, t }: SessionDesktopProps) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
+  const requests = useRef(0)
   useEffect(() => {
     const epoch = ++generation.current
     setSnapshot(null); setSelected(''); setError(null); setBusy(false)
-    void remote.v02Snapshot(sessionKey).then((next) => { if (generation.current === epoch) { setSnapshot(next); setSelected(next.binding?.environmentId ?? '') } }, (e: unknown) => { if (generation.current === epoch) setError(e instanceof Error ? e.message : t('failed')) })
-    return () => { generation.current++ }
+    requests.current++
+    const refresh = async () => {
+      const sequence = ++requests.current
+      try { const next = await remote.v02Snapshot(sessionKey); if (generation.current === epoch && sequence === requests.current) { setSnapshot(next); setSelected(next.binding?.environmentId ?? '') } }
+      catch (e) { if (generation.current === epoch && sequence === requests.current) setError(e instanceof Error ? e.message : t('failed')) }
+    }
+    const stream = remote.v02WatchSession?.(sessionKey)
+    if (stream) void (async () => {
+      try { for await (const _view of stream) { if (generation.current !== epoch) break; void refresh() } }
+      catch (e) { if (generation.current === epoch) setError(e instanceof Error ? e.message : t('failed')) }
+    })()
+    void refresh()
+    return () => { generation.current++; stream?.dispose() }
   }, [remote, sessionKey, t])
   const select = async () => {
     if (busy || !remote.v02Bind || !selected) return
@@ -28,8 +40,9 @@ export function SessionDesktop({ sessionKey, remote, t }: SessionDesktopProps) {
     try {
       const operation = await remote.v02Bind(sessionKey, selected, randomUUID())
       if (operation.state === 'failed') throw new Error(t('operationFailed'))
+      const sequence = ++requests.current
       const next = await remote.v02Snapshot(sessionKey)
-      if (generation.current === epoch) setSnapshot(next)
+      if (generation.current === epoch && sequence === requests.current) setSnapshot(next)
     } catch (e) { if (generation.current === epoch) setError(e instanceof Error ? e.message : t('failed')) }
     finally { if (generation.current === epoch) setBusy(false) }
   }
@@ -39,8 +52,9 @@ export function SessionDesktop({ sessionKey, remote, t }: SessionDesktopProps) {
     setBusy(true); setError(null)
     try {
       await remote.v02Unbind(sessionKey, randomUUID())
+      const sequence = ++requests.current
       const next = await remote.v02Snapshot(sessionKey)
-      if (generation.current === epoch) { setSnapshot(next); setSelected('') }
+      if (generation.current === epoch && sequence === requests.current) { setSnapshot(next); setSelected('') }
     } catch (e) { if (generation.current === epoch) setError(e instanceof Error ? e.message : t('failed')) }
     finally { if (generation.current === epoch) setBusy(false) }
   }
@@ -48,6 +62,7 @@ export function SessionDesktop({ sessionKey, remote, t }: SessionDesktopProps) {
     {error && <p role="alert" className={styles.error}>{error}</p>}
     <div className={styles.selector}>
       <p className={styles.hint}>{t('selectDescription')}</p>
+      {snapshot?.workspace && <p className={styles.notice}><strong>{snapshot.workspace.mode}</strong> · <code>{snapshot.workspace.guestPath}</code></p>}
       {snapshot === null ? <p role="status" className={styles.hint}>{t('loading')}</p> : <>
         {snapshot.environments.length === 0 ? <p className={styles.notice}>{t('noEnvironments')}</p> : <>
           <label className={styles.field}><span>{t('selectEnvironment')}</span><select className={styles.select} value={selected} disabled={busy} onChange={(e) => { setSelected(e.target.value) }}><option value="">{t('selectEnvironment')}</option>{snapshot.environments.map(item => <option value={item.id} key={item.id}>{item.displayName} · {item.observed?.phase ?? t('unknown')}</option>)}</select></label>

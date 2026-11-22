@@ -1,5 +1,5 @@
 {
-  "extends": "../../../tsconfig.base.json",
+  "extends": "./tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "lib/types"
@@ -14,7 +14,11 @@
     "src/environments.ts",
     "src/binding.ts",
     "src/lifecycle.ts",
-    "src/telemetry.ts"
+    "src/telemetry.ts",
+    "src/preparation.ts",
+    "src/workspace-copy.ts",
+    "src/guest-workspace.ts",
+    "src/agent-workspaces.ts"
   ],
   "references": [
     {
@@ -40,6 +44,12 @@
     },
     {
       "path": "../../storage/storage-domain"
+    },
+    {
+      "path": "../../session/working-directory"
+    },
+    {
+      "path": "../../interaction/user-approval"
     }
   ]
 }

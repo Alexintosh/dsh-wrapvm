@@ -1,9 +1,9 @@
 # Wrapvm desktop
 
-Manage Docker desktop environments from **VM environments**, and select an environment from the conversation’s **VM desktop** panel. Settings exposes the same conversation selector and ephemeral desktop viewer.
+Ask the agent to load `use-vm` and call `vm_prepare`. It prepares the conversation’s project, creates or resumes a desktop environment and assigns it automatically. No manual environment form or sidebar selection is required.
 
-The 0.2.2 interface uses native Harness controls and theme tokens. Creation, resource limits and removal have dedicated dialogs. CPU is entered in cores and memory in GiB. Optional shared folders are grouped separately, and removing an environment lets you choose whether to retain its workspace volume.
+The default workspace is a persistent copy. Retries preserve guest edits. `vm_workspace` reports its mode/path, imports individual files without overwriting guest changes, and exports files into a new host review directory with conflict information. Direct host mounts require explicit native approval.
 
-The viewer URL is owner-only and held for the active frame. It is discarded on session or selection changes, stream loss, or explicit closure; client closure does not establish server-side credential revocation.
+**VM environments**, Settings and the conversation’s **VM desktop** panel retain the Harness-native controls and theme. Agent selections update the open panel; **Open in host browser** opens an authenticated link in the host’s default browser; the embedded viewer remains available. Both open only on request. Its token is discarded on session/selection changes, stream loss or closure; client closure does not establish server-side token revocation.
 
-Ordinary Harness tools retain their existing permissions. A Docker container is not a dedicated virtual machine, and offline environment creation is currently unsupported. See the [README](../README.md) for installation and boundaries.
+Ordinary Harness tools retain their permissions. A Docker container is not a dedicated VM; offline creation remains unsupported. See the README for configuration and boundaries.

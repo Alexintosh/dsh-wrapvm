@@ -13,7 +13,7 @@ if (existsSync(join(root, 'managed'))) {
   if (args[0] === 'network' && args[1] === 'inspect') { process.stdout.write(JSON.stringify({ Name: network, Id: 'net-1', Labels: labels })); process.exit(0) }
   if (args[0] === 'volume' && args[1] === 'inspect') { process.stdout.write(JSON.stringify({ Name: volume, Driver: 'local', Labels: labels })); process.exit(0) }
   if (args[0] === 'exec' && args.at(-1)?.includes('/json/list')) { process.stdout.write(JSON.stringify([{ id: 'page-1', title: 'Fixture', url: 'about:blank' }])); process.exit(0) }
-  if (args[0] === 'exec' && args.includes('wrap-desktop') && args.includes('/opt/wrap/bin/wrap-entrypoint')) { process.stdout.write(args.at(-1) + '/?token=fixture-viewer-secret'); process.exit(0) }
+  if (args[0] === 'exec' && args.includes('wrap-desktop') && args.includes('/opt/wrap/bin/wrap-entrypoint')) { process.stdout.write(args.at(-1) + (existsSync(join(root, 'viewer-without-token')) ? '/' : '/?token=fixture-viewer-secret')); process.exit(0) }
   if (args[0] === 'exec') { process.stdout.write('guest output'); process.exit(0) }
   if (['start', 'stop', 'pause', 'unpause'].includes(args[0])) { writeFileSync(join(root, 'state'), ({ start: 'running', stop: 'exited', pause: 'paused', unpause: 'running' })[args[0]]); process.exit(0) }
   if (args[0] === 'stats') { process.exit(0) }

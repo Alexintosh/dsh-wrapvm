@@ -53,6 +53,13 @@ export interface VmBinding {
     readonly generation: number;
     readonly history: readonly string[];
 }
+/** Prepared guest project for this conversation. */
+export interface VmWorkspaceView {
+    readonly phase: 'preparing' | 'ready';
+    readonly mode: 'copy' | 'empty' | 'bind-readonly' | 'bind-readwrite';
+    readonly guestPath: string;
+    readonly sourceRoot: string | null;
+}
 /** Core policy and binding visibility for one conversation. */
 export interface VmSessionView {
     readonly epoch: string;
@@ -60,6 +67,7 @@ export interface VmSessionView {
     readonly policy: VmPolicy;
     readonly binding: VmBinding | null;
     readonly bindingComplete: boolean;
+    readonly workspace?: VmWorkspaceView | null;
 }
 /** One observable environment operation. */
 export interface VmOperationView {
@@ -121,6 +129,7 @@ export interface VmInventorySnapshot {
     readonly policy: VmPolicy | null;
     readonly binding: VmBinding | null;
     readonly bindingComplete: boolean;
+    readonly workspace?: VmWorkspaceView | null;
 }
 /** A viewer credential is returned only after a verified binding is available. */
 export interface VmViewerLink {

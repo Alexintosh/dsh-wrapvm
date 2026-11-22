@@ -120,16 +120,16 @@ it('shows unknown inventory state and disposes the shared resource stream', asyn
 
 it('selects a conversation environment and opens its desktop', async () => {
   const { SessionDesktop } = await import('../src/client/session.tsx')
-  const updates = stream<SessionView>()
+  const updates: ReturnType<typeof stream<SessionView>>[] = []
   const environment = { id: 'a', displayName: 'One', observed: { phase: 'running' } } as Environment
   const snapshot = { environments: [environment], binding: null, policy: null, bindingComplete: false }
   const bind = vi.fn().mockResolvedValue({ state: 'completed' })
-  const remote = { v02Snapshot: vi.fn().mockResolvedValue(snapshot), v02Bind: bind, v02WatchSession: () => updates.iterable, v02ViewerUrl: vi.fn().mockResolvedValue({ url: 'http://localhost/?token=fixture', epoch: 'host', revision: 1, expiresAt: null }) }
+  const remote = { v02Snapshot: vi.fn().mockResolvedValue(snapshot), v02Bind: bind, v02WatchSession: () => { const sub = stream<SessionView>(); updates.push(sub); return sub.iterable }, v02ViewerUrl: vi.fn().mockResolvedValue({ url: 'http://localhost/?token=fixture', epoch: 'host', revision: 1, expiresAt: null }) }
   render(<SessionDesktop sessionKey="s" remote={remote} t={t} />)
   fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'a' } })
   fireEvent.click(screen.getByRole('button', { name: en.bind }))
   await waitFor(() => { expect(bind).toHaveBeenCalledWith('s', 'a', expect.any(String)) })
-  await act(async () => { updates.push({ done: false, value: { ...view(1), bindingComplete: false } }) })
+  await act(async () => { updates.forEach(sub => sub.push({ done: false, value: { ...view(1), bindingComplete: false } })) })
   expect(screen.getByText(en.environmentSelected)).toBeTruthy()
   fireEvent.click(screen.getByRole('button', { name: en.viewer }))
   expect(await screen.findByTitle(en.desktopTitle)).toBeTruthy()
@@ -205,4 +205,82 @@ it('keeps creation input and failure visible until a successful retry', async ()
   fireEvent.click(screen.getByRole('button', { name: en.createEnvironment }))
   await waitFor(() => { expect(screen.queryByRole('dialog')).toBeNull() })
   expect(create).toHaveBeenLastCalledWith(expect.objectContaining({ limits: { cpuMillis: 1000, memoryBytes: 1024 ** 3, diskBytes: null } }), expect.any(String))
+})
+
+it('updates an already-open session selector and project path after agent preparation, without opening the viewer', async () => {
+  const { SessionDesktop } = await import('../src/client/session.tsx')
+  const subscriptions: ReturnType<typeof stream<SessionView>>[] = []
+  let selected = false
+  const item = { id: 'agent-env', displayName: 'Agent project', observed: { phase: 'running' } } as Environment
+  const binding = { sessionKey: 's', environmentId: 'agent-env', generation: 1, history: [] }
+  const snapshot = vi.fn(async () => ({ environments: selected ? [item] : [], binding: selected ? binding : null, policy: null, bindingComplete: true,
+    workspace: selected ? { phase: 'ready' as const, mode: 'copy' as const, guestPath: '/home/user/workspace/projects/prepared', sourceRoot: '/project' } : null }))
+  const remote: RemoteV02 = { v02Snapshot: snapshot, v02WatchSession: () => { const sub = stream<SessionView>(); subscriptions.push(sub); return sub.iterable }, v02ViewerUrl: vi.fn() }
+  const rendered = render(<SessionDesktop sessionKey="s" remote={remote} t={t} />)
+  await screen.findByText(en.noEnvironments)
+  selected = true
+  await act(async () => { for (const sub of subscriptions) sub.push({ done: false, value: { ...view(2), binding } }) })
+  expect((await screen.findByRole('combobox') as HTMLSelectElement).value).toBe('agent-env')
+  expect(screen.getByText('/home/user/workspace/projects/prepared')).toBeTruthy()
+  expect(remote.v02ViewerUrl).not.toHaveBeenCalled()
+  rendered.unmount()
+  for (const sub of subscriptions) expect(sub.iterable.dispose).toHaveBeenCalledOnce()
+})
+
+afterEach(() => { vi.restoreAllMocks() })
+it('opens an authenticated external browser on demand, keeps a fallback link and clears it on selection change', async () => {
+  const updates = stream<SessionView>()
+  // Electron returns null even when it successfully hands the URL to the host browser.
+  const launch = vi.spyOn(window, 'open').mockReturnValue(null)
+  const url = 'http://127.0.0.1:55000/?token=external-test'
+  const remote = { v02WatchSession: () => updates.iterable, v02ViewerUrl: vi.fn().mockResolvedValue({ url, epoch: 'host', revision: 1, expiresAt: null }) }
+  render(<VmViewer sessionKey="s" remote={remote} t={t} />)
+  await act(async () => { updates.push({ done: false, value: view(1) }) })
+  expect(launch).not.toHaveBeenCalled()
+  expect(remote.v02ViewerUrl).not.toHaveBeenCalled()
+  fireEvent.click(screen.getByRole('button', { name: en.openHostBrowser }))
+  await waitFor(() => { expect(launch).toHaveBeenCalledExactlyOnceWith(url, '_blank', 'noopener,noreferrer') })
+  expect(remote.v02ViewerUrl).toHaveBeenCalledWith('s', 'host', 1)
+  expect(screen.queryByTitle(en.desktopTitle)).toBeNull()
+  const link = screen.getByRole('link', { name: en.authenticatedLink })
+  expect(link.getAttribute('href')).toBe(url)
+  expect(link.getAttribute('rel')).toBe('noopener noreferrer')
+  expect(link.getAttribute('referrerpolicy')).toBe('no-referrer')
+  expect(link.textContent).not.toContain('external-test')
+  await act(async () => { updates.push({ done: false, value: view(2) }) })
+  expect(screen.queryByRole('link')).toBeNull()
+})
+it('never launches an external viewer from a late response after selection changes', async () => {
+  const updates = stream<SessionView>(), pending = Promise.withResolvers<unknown>()
+  const launch = vi.spyOn(window, 'open').mockReturnValue(null)
+  const remote = { v02WatchSession: () => updates.iterable, v02ViewerUrl: vi.fn(() => pending.promise) } as unknown as RemoteV02
+  render(<VmViewer sessionKey="s" remote={remote} t={t} />)
+  await act(async () => { updates.push({ done: false, value: view(1) }) })
+  fireEvent.click(screen.getByRole('button', { name: en.openHostBrowser }))
+  await act(async () => { updates.push({ done: false, value: view(2) }); pending.resolve({ url: 'http://localhost/?token=stale', epoch: 'host', revision: 1, expiresAt: null }) })
+  expect(launch).not.toHaveBeenCalled()
+  expect(screen.queryByRole('link')).toBeNull()
+})
+it.each(['http://127.0.0.1:55000/', 'http://example.com/?token=secret', 'javascript:alert(1)'])('rejects an unauthenticated or nonlocal external viewer URL: %s', async url => {
+  const updates = stream<SessionView>()
+  const launch = vi.spyOn(window, 'open').mockReturnValue(null)
+  const remote = { v02WatchSession: () => updates.iterable, v02ViewerUrl: vi.fn().mockResolvedValue({ url, epoch: 'host', revision: 1, expiresAt: null }) }
+  render(<VmViewer sessionKey="s" remote={remote} t={t} />)
+  await act(async () => { updates.push({ done: false, value: view(1) }) })
+  fireEvent.click(screen.getByRole('button', { name: en.openHostBrowser }))
+  await screen.findByRole('alert')
+  expect(launch).not.toHaveBeenCalled()
+  expect(screen.queryByRole('link')).toBeNull()
+})
+it('removes an external link when session access ends', async () => {
+  const updates = stream<SessionView>()
+  vi.spyOn(window, 'open').mockReturnValue(null)
+  const remote = { v02WatchSession: () => updates.iterable, v02ViewerUrl: vi.fn().mockResolvedValue({ url: 'http://localhost/?token=test', epoch: 'host', revision: 1, expiresAt: null }) }
+  render(<VmViewer sessionKey="s" remote={remote} t={t} />)
+  await act(async () => { updates.push({ done: false, value: view(1) }) })
+  fireEvent.click(screen.getByRole('button', { name: en.openHostBrowser }))
+  await screen.findByRole('link')
+  await act(async () => { updates.push({ done: true, value: undefined }) })
+  expect(screen.queryByRole('link')).toBeNull()
+  expect(screen.queryByRole('button', { name: en.openHostBrowser })).toBeNull()
 })
