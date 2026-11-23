@@ -6,12 +6,12 @@
 
 ![A little blue whale uses a terminal inside a shipping container, while a laptop shows the same desktop beside the chat.](docs/repo-header.png)
 
-![Demo: the agent works in chat while the VM desktop panel shows the machine it is driving.](docs/demo.gif)
-
 Your agent needs a real environment to do useful work: a shell, Chrome, a desktop. Your host needs to stay untouched. DSH Isolated gives the agent both — a disposable Linux machine in a Docker container, with its screen visible right next to the chat.
 
 **Run Harness in read-only mode on your host.** In this setup, host isolation comes only from the Harness sandbox — the container is a workspace for the agent, not a security boundary.
-
+<p align="center">
+   <img src="docs/demo.gif" alt="Demo: the agent works in chat while the VM desktop panel shows the machine it is driving." />
+</p>
 ## Why not just use Docker directly?
 
 | | No isolation | Raw Docker + compose | DSH Isolated |
