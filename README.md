@@ -1,5 +1,7 @@
 # DSH Isolated
 
+[![Release](https://img.shields.io/github/v/release/Alexintosh/dsh-wrapvm)](https://github.com/Alexintosh/dsh-wrapvm/releases) [![npm](https://img.shields.io/npm/v/dsh-wrapvm-isolate)](https://www.npmjs.com/package/dsh-wrapvm-isolate) [![License: MIT](https://img.shields.io/github/license/Alexintosh/dsh-wrapvm)](LICENSE) ![DeepSeek Harness](https://img.shields.io/badge/DeepSeek%20Harness-0.2.2--rc.5-blue)
+
 > A full Linux desktop for your DeepSeek Harness agent — inside Docker, away from your host.
 
 ![A little blue whale uses a terminal inside a shipping container, while a laptop shows the same desktop beside the chat.](docs/repo-header.png)
@@ -10,11 +12,20 @@ Your agent needs a real environment to do useful work: a shell, Chrome, a deskto
 
 **Run Harness in read-only mode on your host.** In this setup, host isolation comes only from the Harness sandbox — the container is a workspace for the agent, not a security boundary.
 
+## Why not just use Docker directly?
+
+| | No isolation | Raw Docker + compose | DSH Isolated |
+| --- | --- | --- | --- |
+| Agent works directly on your host | Yes | No | No |
+| Full Linux desktop + browser for the agent | — | Build it yourself | Included |
+| Start/stop, CPU and memory limits from the chat | — | CLI only | Built in |
+| Setup | None | Write compose files and image plumbing | Install plugin, send one prompt |
+
 ## Quick start
 
 Requires [DeepSeek Harness 0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness), Docker, and a Wrapvm desktop image (default tag `wrapvm-dsh:desktop`).
 
-1. Download the [plugin bundle](https://github.com/Alexintosh/dsh-isolated/raw/refs/heads/main/dist/deepseek-ai-dsh-wrapvm-isolate-0.3.2.tgz) ([SHA-256](https://github.com/Alexintosh/dsh-isolated/raw/refs/heads/main/dist/deepseek-ai-dsh-wrapvm-isolate-0.3.2.tgz.sha256)).
+1. Download the plugin archive from npm and keep it as a `.tgz`: [dsh-wrapvm-isolate-0.3.2.tgz](https://registry.npmjs.org/dsh-wrapvm-isolate/-/dsh-wrapvm-isolate-0.3.2.tgz) ([SHA-256](dist/dsh-wrapvm-isolate-0.3.2.tgz.sha256)).
 2. In Harness: **Plugins → Add plugin**, pick the archive, enable **Wrapvm desktop**.
 3. In a conversation, send:
 

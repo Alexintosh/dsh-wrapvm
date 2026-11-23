@@ -5,7 +5,7 @@ import type {
   TypertRemoteInfo,
   TypertRemoteMethod,
 } from '@deepseek-ai/dsh-typert-protocol'
-import type { VmInventorySnapshot, VmOperationView, VmRemovalPreview, VmResourceUpdate, VmSessionView, VmViewerLink } from '@deepseek-ai/dsh-wrapvm-isolate/types'
+import type { VmInventorySnapshot, VmOperationView, VmRemovalPreview, VmResourceUpdate, VmSessionView, VmViewerLink } from 'dsh-wrapvm-isolate/types'
 
 declare module '@deepseek-ai/dsh-typert-protocol' {
   interface TypertRemoteNamespace$77726170766d49736f6c617465 {

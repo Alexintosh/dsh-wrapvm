@@ -105,7 +105,7 @@ it('denies host tools and admits pinned VM tools through the real pipeline while
   let mode: SafetyMode = 'normal'
   const admission: ProtectedAdmissionProvider = createProtectedAdmission(
     { mode: () => mode, generation: () => 1 },
-    pinTrustedCapabilities([{ capability: 'vm_shell', definition: vmShell, ownerPlugin: '@deepseek-ai/dsh-wrapvm-isolate' }]),
+    pinTrustedCapabilities([{ capability: 'vm_shell', definition: vmShell, ownerPlugin: 'dsh-wrapvm-isolate' }]),
     ledger,
   )
   // The provider must stay structurally compatible with the core contract.

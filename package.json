@@ -1,7 +1,7 @@
 {
-  "name": "@deepseek-ai/dsh-wrapvm-isolate",
+  "name": "dsh-wrapvm-isolate",
   "version": "0.3.2",
-  "private": true,
+  "private": false,
   "description": "Wrapvm container lifecycle, guest tools, and a desktop viewer for DeepSeek Harness.",
   "type": "module",
   "main": "lib/index.js",

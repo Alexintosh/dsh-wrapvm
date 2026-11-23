@@ -10,7 +10,7 @@ for(const base of [join(source,'node_modules'),join(source,'node_modules/.pnpm/n
  if(!existsSync(base))continue
  for(const name of readdirSync(base)){if(name==='@deepseek-ai'||name==='.pnpm'||name.startsWith('.'))continue;link(join(base,name),join(modules,name))}
 }
-const register=dir=>{const file=join(dir,'package.json');if(!existsSync(file))return;const {name}=JSON.parse(readFileSync(file,'utf8'));if(name?.startsWith('@deepseek-ai/')&&name!=='@deepseek-ai/dsh-wrapvm-isolate')link(dir,join(modules,name))}
+const register=dir=>{const file=join(dir,'package.json');if(!existsSync(file))return;const {name}=JSON.parse(readFileSync(file,'utf8'));if(name?.startsWith('@deepseek-ai/')&&name!=='dsh-wrapvm-isolate')link(dir,join(modules,name))}
 for(const group of readdirSync(join(source,'packages'),{withFileTypes:true}))if(group.isDirectory())for(const pkg of readdirSync(join(source,'packages',group.name),{withFileTypes:true}))if(pkg.isDirectory())register(join(source,'packages',group.name,pkg.name))
 for(const pkg of readdirSync(join(source,'vendor'),{withFileTypes:true}))if(pkg.isDirectory())register(join(source,'vendor',pkg.name))
 console.log('Linked existing development dependencies in this repository only; existing entries were preserved.')

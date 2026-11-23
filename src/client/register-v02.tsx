@@ -15,7 +15,7 @@ import { WrapvmSectionIcon } from './icon.tsx'
 import type { ReadV02 } from './remote-adapter.ts'
 
 const PANEL_ID = 'wrapvm-environments' as MainPanelId
-const TAB_ID = '@deepseek-ai/dsh-wrapvm-isolate/desktop'
+const TAB_ID = 'dsh-wrapvm-isolate/desktop'
 type MainProps = PropsRuntime<'main'> & PropsLocale<'wrapvm_isolate'> & InjectFace<{ remote: ReadV02 | null; full: RemoteV02 | null }>
 type DesktopProps = PropsRuntime<'sidebar.right.pane.tab'> & PropsLocale<'wrapvm_isolate'> & InjectFace<{ remote: ReadV02 | null; full: RemoteV02 | null }>
 function Page({ remote, full, t }: MainProps) { return full ? <Environments remote={full} t={t} /> : remote ? <ReadInventory remote={remote} t={t} /> : <p role="status">{t('sessionUnavailable')}</p> }

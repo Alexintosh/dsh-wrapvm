@@ -3517,7 +3517,7 @@ function createDockerStatsSource(stats, writableLayerSize, resolveContainerId) {
 //#endregion
 //#region lib/types/index.js
 /**
-* @deepseek-ai/dsh-wrapvm-isolate — isolated wrapvm desktop VM for DeepSeek Harness.
+* dsh-wrapvm-isolate — isolated wrapvm desktop VM for DeepSeek Harness.
 *
 * Host half: container lifecycle (start/stop/status/exec/innerUrl) and agent
 * tools (vm_shell, vm_browser, vm_desktop, vm_status) driven through the docker

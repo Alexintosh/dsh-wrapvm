@@ -46,7 +46,7 @@ describe('protection mode vocabulary', () => {
 describe('trusted capability identity', () => {
   const pinnedVmShell = definition('vm_shell')
   const pinned = pinTrustedCapabilities([
-    { capability: 'vm_shell', definition: pinnedVmShell, ownerPlugin: '@deepseek-ai/dsh-wrapvm-isolate' },
+    { capability: 'vm_shell', definition: pinnedVmShell, ownerPlugin: 'dsh-wrapvm-isolate' },
   ])
 
   it('admits the exact pinned registration only', () => {
@@ -130,7 +130,7 @@ describe('trusted host capabilities with constrained parameters', () => {
   const loadSkill = definition('load_vm_skill')
   const pinned = pinTrustedCapabilities([
     { capability: 'ask_user_question', definition: askUser, ownerPlugin: '@deepseek-ai/dsh-tools', constraints: () => undefined },
-    { capability: 'load_vm_skill', definition: loadSkill, ownerPlugin: '@deepseek-ai/dsh-wrapvm-isolate', constraints: bundledSkillConstraints(['use-vm', 'vm-workspace']) },
+    { capability: 'load_vm_skill', definition: loadSkill, ownerPlugin: 'dsh-wrapvm-isolate', constraints: bundledSkillConstraints(['use-vm', 'vm-workspace']) },
   ])
 
   it('admits the pinned DSH question transport identity only', () => {
@@ -206,7 +206,7 @@ describe('in-flight ledger', () => {
 describe('final-dispatch admission decisions', () => {
   const vmShell = definition('vm_shell')
   const hostShell = definition('host_shell')
-  const pinned = pinTrustedCapabilities([{ capability: 'vm_shell', definition: vmShell, ownerPlugin: '@deepseek-ai/dsh-wrapvm-isolate' }])
+  const pinned = pinTrustedCapabilities([{ capability: 'vm_shell', definition: vmShell, ownerPlugin: 'dsh-wrapvm-isolate' }])
 
   function harness(mode: SafetyMode) {
     const ledger = new InFlightLedger()

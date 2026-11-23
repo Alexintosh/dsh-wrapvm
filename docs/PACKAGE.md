@@ -3,7 +3,7 @@ description: "Managed Wrapvm desktop environments and guest tools."
 kind: "package-bundle"
 ---
 
-# @deepseek-ai/dsh-wrapvm-isolate
+# dsh-wrapvm-isolate
 
 This optional bundle adds managed Docker environments, a conversation-specific desktop viewer and `vm_prepare`, `vm_environments`, `vm_workspace`, `vm_status`, `vm_shell`, `vm_browser`, `vm_desktop`, and `load_vm_skill`. It targets DeepSeek Harness 0.2.2-rc.5 and Node 24.9 or later.
 
