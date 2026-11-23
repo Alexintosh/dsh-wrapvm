@@ -12,6 +12,7 @@ Your agent needs a real environment to do useful work: a shell, Chrome, a deskto
 <p align="center">
    <img src="docs/demo.gif" alt="Demo: the agent works in chat while the VM desktop panel shows the machine it is driving." />
 </p>
+
 ## Why not just use Docker directly?
 
 | | No isolation | Raw Docker + compose | DSH Isolated |
