@@ -1,6 +1,16 @@
 # DSH Isolated
 
+![A little blue whale uses a terminal inside a shipping container, while a laptop shows the same desktop beside the chat.](docs/repo-header.png)
+
 Give a DeepSeek Harness conversation its own Linux desktop. Your agent can run shell commands, use Chrome and interact with the desktop inside a Docker container. Open **VM desktop** alongside the chat to see the same screen.
+
+## Why this project
+
+Agent tools that run on your host work directly against your machine: a mistaken command, a prompt-injected instruction or a buggy script can touch files and settings well outside the project you opened. Locking the agent down entirely solves that, but then it loses the ability to do real work — build, run tests, browse documentation, debug a web page.
+
+DSH Isolated is an easy way to get both: keep your host isolated while still giving the agent a full environment. The agent works inside a Docker container with a complete Linux desktop, shell and browser, and you watch or steer it from the **VM desktop** panel.
+
+**We recommend running DeepSeek Harness in read-only mode on your host.** In that setup, the isolation of your machine is provided only by the Harness sandbox: the plugin itself does not add any additional layer of host protection. The container is a comfortable working environment for the agent, not a security boundary for your host. Treat it accordingly — review what the agent does, and rely on the read-only Harness sandbox to keep your files safe.
 
 ## Install
 
@@ -25,6 +35,8 @@ Look in your project's `.wrapvm-exports/review-*` directory for the exported fil
 - **Project files.** The default copy includes eligible uncommitted and untracked files. It skips Git history, dependencies, common credential files and symlinks. Review projects that contain sensitive material under other names. Each copy is limited to 5,000 files, 64 MiB total and 2 MiB per file.
 - **Host folders.** Choose a bind mount when you want the guest to see the live project. A read-write mount allows guest edits to change host files directly. Harness requests approval for the path and access mode.
 - **Tools and networking.** The plugin’s guest tools run inside the selected Docker container. Ordinary Harness tools still run with their host permissions. The desktop backend requires internet access. Viewer links grant access to the desktop, so keep them private.
+
+With Harness in read-only mode, those host permissions are reduced to reading, which is what makes the setup safe: the guest container gives the agent room to work, and the Harness sandbox keeps the host unchanged.
 
 ## If something goes wrong
 
