@@ -25,7 +25,13 @@ Your agent needs a real environment to do useful work: a shell, Chrome, a deskto
 
 Requires [DeepSeek Harness 0.2.2-rc.5](https://github.com/deepseek-ai/deepseek-harness), Docker, and a Wrapvm desktop image (default tag `wrapvm-dsh:desktop`).
 
-1. Download the plugin archive from npm and keep it as a `.tgz`: [dsh-wrapvm-isolate-0.3.2.tgz](https://registry.npmjs.org/dsh-wrapvm-isolate/-/dsh-wrapvm-isolate-0.3.2.tgz) ([SHA-256](dist/dsh-wrapvm-isolate-0.3.2.tgz.sha256)).
+1. Fetch the plugin archive (keep it as a `.tgz`):
+
+   ```bash
+   npm pack dsh-wrapvm-isolate@0.3.2
+   ```
+
+   Or download the [tarball](https://www.npmjs.com/package/dsh-wrapvm-isolate) directly. A [SHA-256 checksum](dist/dsh-wrapvm-isolate-0.3.2.tgz.sha256) is available for verification.
 2. In Harness: **Plugins → Add plugin**, pick the archive, enable **Wrapvm desktop**.
 3. In a conversation, send:
 
